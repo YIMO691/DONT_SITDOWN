@@ -1,0 +1,7 @@
+{
+  "projectRoot": "F:\\MyProject",
+  "worktreesRoot": "F:\\MyProject.worktrees",
+  "logSubPath": "Logs\\ClaudeRelay",
+  "openclawStateDir": "F:\\Claude Code\\.openclaw-state",
+  "claudeCodePath": "claude"
+}

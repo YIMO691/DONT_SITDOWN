@@ -1,0 +1,32 @@
+# Config with secrets
+config.json
+
+# System
+.claude-kit-version
+.claude/settings.json
+.claude/settings.local.json
+.claude/agents/
+.claude/commands/
+.claude/skills/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Secrets
+*.key
+*.pem
+.env
+
+# Logs
+Logs/
+
+# OpenClaw local state
+.openclaw/
+.openclaw-state/
