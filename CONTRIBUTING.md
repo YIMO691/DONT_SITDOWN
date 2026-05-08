@@ -46,10 +46,10 @@ copy config.example.json config.json
 Invoke-Pester tests/relay.tests.ps1
 
 # Run unit tests only (skip integration)
-Invoke-Pester tests/relay.tests.ps1 -ExcludeTag Integration
+Invoke-Pester -Path tests/relay.tests.ps1 -FullNameFilter "Redact-Secrets*","Test-PathInsideRoot*","Compare-GitStatusSnapshots*"
 
 # Run specific test group
-Invoke-Pester tests/relay.tests.ps1 -TestName "Redact-Secrets"
+Invoke-Pester -Path tests/relay.tests.ps1 -FullNameFilter "Redact-Secrets*"
 ```
 
 Add tests for any changes to:

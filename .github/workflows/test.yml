@@ -15,12 +15,21 @@ jobs:
       - name: Run Pester tests
         shell: powershell
         run: |
-          # Use pre-installed Pester (3.x on Windows PowerShell 5.1)
+          # Use pre-installed Pester. GitHub-hosted Windows runners currently
+          # provide Pester 5.x, while some local Windows PowerShell 5.1
+          # installs still have Pester 3.x.
           $module = Get-Module -ListAvailable -Name Pester | Sort-Object Version -Descending | Select-Object -First 1
           Write-Output "Using Pester $($module.Version)"
           Import-Module Pester -RequiredVersion $module.Version -Force
+
           # Skip integration tests (no config.json on CI runner)
-          Invoke-Pester -Path tests/relay.tests.ps1 -TestName "Redact-Secrets","Test-PathInsideRoot","Compare-GitStatusSnapshots"
+          $unitGroupFilters = @("Redact-Secrets*", "Test-PathInsideRoot*", "Compare-GitStatusSnapshots*")
+          $invokePesterParameters = (Get-Command Invoke-Pester).Parameters
+          if ($invokePesterParameters.ContainsKey("FullNameFilter")) {
+              Invoke-Pester -Path tests/relay.tests.ps1 -FullNameFilter $unitGroupFilters
+          } else {
+              Invoke-Pester -Path tests/relay.tests.ps1 -TestName $unitGroupFilters
+          }
 
       - name: Verify scripts are syntactically valid
         shell: powershell
