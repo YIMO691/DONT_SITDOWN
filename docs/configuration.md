@@ -4,12 +4,14 @@
 
 | 文件 | 位置 | 用途 |
 |------|------|------|
+| `config.json` | 项目根目录 | 主配置 (projectRoot, worktreesRoot 等) |
 | `settings.local.json` | `.claude/` | Claude Code 工具权限 |
 | `cc-target.json` | `.openclaw/` | 当前目标会话/workspace |
 | `cc-sessions.json` | `.openclaw/` | 已注册会话目录 |
-| `openclaw.json` | `.openclaw-state/` | OpenClaw Agent 配置 |
+| `cc-projects.json` | `~/.openclaw/` | 多项目注册白名单 |
+| `openclaw.json` | `~/.openclaw/` | OpenClaw Agent 配置 |
+| `SOUL.md` | `~/.openclaw/agents/<name>/agent/` | OpenClaw 直通指令 |
 | `remote-commands.md` | `.claude/rules/` | 远程指令规则（Claude 上下文注入） |
-| `unity-csharp.md` | `.claude/rules/` | Unity C# 编码规则 |
 
 ---
 
@@ -127,6 +129,50 @@ Claude Code 权限配置，控制哪些 Bash/Read 操作可无需用户确认。
 
 ---
 
+## ~/.openclaw/cc-projects.json
+
+多项目注册白名单，定义管线可以操作的项目列表。relay 执行前校验 workspace 是否在本文件中注册。
+
+**字段说明**:
+
+| 字段 | 类型 | 必需 | 说明 |
+|------|------|------|------|
+| `name` | string | ✅ | 项目简称（飞书切换用） |
+| `workspace` | string | ✅ | 项目根目录绝对路径 |
+| `worktreesRoot` | string | | worktrees 父目录，默认 `workspace.worktrees` |
+| `active` | bool | | 是否活跃项目（只有一个为 true） |
+| `description` | string | | 项目描述 |
+| `updatedAt` | string | | 最后切换时间（ISO 8601） |
+
+**示例**:
+
+```json
+[
+  {
+    "name": "unity6-ai",
+    "workspace": "F:\\Unity6_AI",
+    "worktreesRoot": "F:\\Unity6_AI.worktrees",
+    "active": true,
+    "description": "Unity 6 AI 项目"
+  },
+  {
+    "name": "dont-sitdown",
+    "workspace": "F:\\DONT_SITDOWN",
+    "worktreesRoot": "F:\\DONT_SITDOWN.worktrees",
+    "active": false,
+    "description": "Feishu-CC 管线"
+  }
+]
+```
+
+**安全约束**: 此文件只能在本机手动编辑，不可通过飞书远程修改。新增未注册项目路径的 workspace 会被 relay 拒绝执行。
+
+**相关命令**:
+- 查看: `/cc-project-list`
+- 切换: `/cc-project-use <name>`
+
+---
+
 ## .openclaw-state/openclaw.json
 
 OpenClaw Agent 的主配置，控制 AI 模型提供者和 Agent 行为。
@@ -182,33 +228,21 @@ paths:
 
 ---
 
-## .claude/rules/unity-csharp.md
-
-针对 `Assets/**/*.cs` 文件的编码规则。
-
-```yaml
----
-paths:
-  - "UnityProject/Assets/**/*.cs"
----
-```
-
-- `[SerializeField] private` 优先于 public 字段
-- 避免 `Update()` 中昂贵查找
-- AI 参数放 Inspector 可调
-- 生成脚本后说明挂载方式
-
----
-
 ## 配置交互关系
 
 ```
-cc-sessions.json ─────┐
-  (会话注册表)         │
-                       ▼
-cc-use.ps1 ──→ cc-target.json ──→ claude-code-relay.ps1
-  (切换会话)    (当前目标)           (读取 workspace/session)
+cc-projects.json ──→ claude-code-relay.ps1
+  (项目白名单)          (安全校验 workspace)
 
-settings.local.json ────────────→ Claude Code CLI
-  (工具权限)                          (实际执行)
+cc-sessions.json ──→ cc-use.ps1 ──→ cc-target.json
+  (会话注册表)          (切换会话)      (当前目标)
+                                         │
+cc-project.ps1 ──────────────────────────┘
+  (切换项目, 更新 workspace)
+
+cc-target.json ──→ claude-code-relay.ps1
+  (当前目标)          (读取 workspace/session)
+
+settings.local.json ──→ Claude Code CLI
+  (工具权限)               (实际执行)
 ```

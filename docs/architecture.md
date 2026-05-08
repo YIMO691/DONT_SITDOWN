@@ -94,31 +94,39 @@
 ### 层级防线
 
 ```
+Layer 0: 项目注册白名单
+  └─ ~/.openclaw/cc-projects.json 定义允许的 workspace 列表
+     未注册路径 → relay 拒绝执行
+
 Layer 1: OpenClaw 消息解析
-  └─ 只响应 /cc 前缀命令
+  └─ SOUL.md 直通，只响应 /cc 前缀命令
 
 Layer 2: cc-command.ps1 路由
-  └─ 强制通过 relay 脚本（cc-run-big 除外）
+  └─ 13 条路由，全部经过 relay 脚本
 
 Layer 3: claude-code-relay.ps1 包装
-  ├─ workspace 强制限制在 F:\Unity6_AI 或 worktrees
+  ├─ workspace 校验 (已注册项目白名单 + worktrees)
+  ├─ FileStream 排他锁 (防止并发修改)
   ├─ --allowedTools / --disallowedTools 白名单/黑名单
-  └─ Prompt 注入安全规则到 claude 上下文
+  ├─ Prompt 注入安全规则到 claude 上下文
+  └─ 自动重试 (网络/API 瞬时错误, 2次, 10s间隔)
 
 Layer 4: Claude Code 工具层
   └─ allowedTools / disallowedTools 实际拦截
 
 Layer 5: 事后审计
   ├─ Git 快照 before/after (SHA256)
-  ├─ 密钥脱敏 (10 种模式)
-  └─ 结构化日志 (prompt/output/meta/summary)
+  ├─ 密钥脱敏 (10 种模式, 共享 lib/secret-utils.ps1)
+  ├─ 结构化日志 (prompt/output/meta/summary)
+  └─ 日志 30 天自动轮转
 ```
 
 ### Workspace 隔离
 
-- 允许范围: `F:\Unity6_AI` 及其 `F:\Unity6_AI.worktrees\*`
+- 允许范围: `~/.openclaw/cc-projects.json` 中注册的所有项目及其 `*.worktrees\*`
 - 校验函数: `Test-PathInsideRoot`，使用 `System.IO.Path.GetFullPath` 防止 `..\..\` 逃逸
-- 多 worktree 支持: 通过 `cc-use` 切换不同分支的工作区
+- 多项目支持: 通过 `/cc-project-use` 切换项目，通过 `/cc-use` 切换分支
+- projectRoot / WorktreesRoot 从 `config.json` 和 `cc-projects.json` 双重读取
 
 ### 密钥脱敏
 
