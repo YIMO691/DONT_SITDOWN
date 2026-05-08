@@ -359,13 +359,17 @@ DONT_SITDOWN/
 ├── config.example.json           配置模板
 ├── config.json                   你的配置 (git-ignored, 由 install.ps1 生成)
 ├── install.ps1                   交互式安装向导
+├── setup-openclaw.ps1            OpenClaw 安装和配置向导
+│
+├── tests/
+│   └── relay.tests.ps1           31 个 Pester 测试 (Redact-Secrets, 路径校验, Git 快照对比, 参数校验)
 │
 ├── tools/
 │   ├── lib/
 │   │   ├── config.ps1            共享路径模块 (读 config.json → 提供 $ProjectRoot 等)
 │   │   └── secret-utils.ps1      共享脱敏模块 (Redact-Secrets, 10 种正则)
 │   │
-│   ├── cc-command.ps1            命令路由器 (9 条路由, if/elseif 链)
+│   ├── cc-command.ps1            命令路由器 (11 条路由, if/elseif 链)
 │   ├── cc-run.ps1                编辑模式入口 (调 relay -AllowEdit)
 │   ├── cc-run-big.ps1            大任务模式入口 (调 relay -AllowEdit -MaxMinutes 0)
 │   ├── cc-status.ps1             当前 relay 任务状态
@@ -375,18 +379,18 @@ DONT_SITDOWN/
 │   ├── cc-use.ps1                切换当前工作会话
 │   ├── oc-session.ps1            OpenClaw 运行时检查 (进程/模型/配置)
 │   │
-│   ├── claude-code-relay.ps1     核心安全中继 (~450 行)
+│   ├── claude-code-relay.ps1     核心安全中继 (~430 行，含文件锁、日志轮转)
 │   ├── claude-code-summary.ps1   摘要生成器
 │   ├── mobile-status.ps1         项目状态报告 (git + Unity logs)
 │   ├── feishu-progress-command.ps1 飞书进度上报包装
-│   └── unity-log-summary.ps1     Unity 日志扫描
+│   ├── unity-log-summary.ps1     Unity 日志扫描
+│   └── verify-pipeline.ps1       管线验证脚本
 │
 ├── .claude/
 │   ├── settings.example.json     Claude Code 权限配置模板
 │   └── rules/
-│       ├── remote-commands.md    远程指令规则 (注入 Claude 上下文)
 │       ├── SOUL.example.md       OpenClaw Agent SOUL.md 模板
-│       └── unity-csharp.md       Unity C# 代码规则
+│       └── remote-commands.md    远程指令规则 (注入 Claude 上下文)
 │
 ├── docs/
 │   ├── architecture.md           完整架构文档 + 数据流图
@@ -394,7 +398,8 @@ DONT_SITDOWN/
 │   ├── configuration.md          所有配置文件字段说明
 │   ├── deployment.md             从零部署 (含故障排除)
 │   ├── operations.md             日常操作 + 排障指南
-│   └── improvement-roadmap.md    已知问题 + 改进路线
+│   ├── improvement-roadmap.md    改进路线 (已完成 7 项, 剩余 6 项)
+│   └── pipeline-deep-dive.md     全链路深度拆解
 │
 └── .github/
     └── ISSUE_TEMPLATE.md

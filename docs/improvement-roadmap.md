@@ -9,31 +9,53 @@
 
 ---
 
-## P1 — 可靠性
+## 已完成 (2026-05-08)
 
-### #1 `/cc-run-big` 无安全防护
+### #2 ✅ 并发互斥竞态窗口
 
-**现状**: `cc-run-big.ps1` 直接调用 `claude -p`，不经过 relay 包装，无 `--allowedTools`/`--disallowedTools` 限制。
+**方案**: `System.IO.FileStream` 排他锁 (`FileShare.None`) + `try/finally` 确保释放。
+**改动**: `tools/claude-code-relay.ps1` — 新增 `Lock-CurrentTask`/`Unlock-CurrentTask` 函数。
 
-**风险**: 可执行 git push、删除文件、暴露密钥。
+### #4 ✅ Redact-Secrets 重复定义
 
-**建议**:
-1. 至少加上 `--disallowedTools "Bash(git push:*),Bash(rm *:),Bash(del *:)"` 
-2. 或者让 `cc-run-big` 也经过 relay，只是 `MaxMinutes=0` (无超时)
+**方案**: 所有脚本统一 dot-source `tools/lib/secret-utils.ps1`。
+**改动**: 7 个脚本的独立 `Redact-Secrets` 定义已删除，改为共享引用。
 
-**工作量**: 小 (~10 行改动)
+### #6 ✅ cc-command.ps1 路由用串行 if
+
+**方案**: 改为 `if/elseif/else` 结构。
+**改动**: `tools/cc-command.ps1` — 所有路由分支使用 `elseif`，末尾 `else` 兜底。
+
+### #7 ✅ 中文字符串用 Unicode 码点数组
+
+**方案**: 全部替换为直接中文字符串，文件编码为 UTF-8 with BOM 保证 PowerShell 5.1 兼容。
+**改动**: 9 个 `.ps1` 文件，共 52 个变量。`[Console]::OutputEncoding` UTF-8 设置保留。
+
+### #8 ✅ 无日志轮转
+
+**方案**: relay 执行完成后清理 30 天前的旧文件，排除 `current-task.json`。
+**改动**: `tools/claude-code-relay.ps1` 末尾追加 4 行清理逻辑。
+
+### #14 ✅ 无测试覆盖
+
+**方案**: 新建 Pester 测试文件，31 个测试覆盖核心函数。
+**改动**: 新建 `tests/relay.tests.ps1`，覆盖 `Redact-Secrets`(11)、`Test-PathInsideRoot`(7)、`Compare-GitStatusSnapshots`(6)、参数校验(4)、cc-command 路由(3)。
+
+### #15 ✅ cc-command.ps1 有死代码路径
+
+**方案**: 删除 `-PromptText` 入口参数和对应的 35 行死代码（绕过路由直接调 relay 的第二条路径）。
+**改动**: `tools/cc-command.ps1` — 只保留 `-MessageText` 单一入口。
 
 ---
 
-### #2 并发控制有竞态窗口
+## P1 — 可靠性
 
-**现状**: `current-task.json` 读取和写入之间存在竞态窗口。两个几乎同时到达的 `/cc-run` 都可能通过检查。
+### #1 `/cc-run-big` 安全防护（已改善，仍有空间）
 
-**建议**: 
-- 方案 A: 使用文件锁 (`System.IO.FileStream` with `FileShare.None`)
-- 方案 B: 任务队列 — 不拒绝，而是排队
-
-**工作量**: 中 (需要改造 current-task.json 的读写逻辑)
+**现状**: `cc-run-big.ps1` 通过 relay `-AllowEdit -MaxMinutes 0` 调用，享有与 `cc-run` 相同的 `--allowedTools`/`--disallowedTools` 限制。
+**剩余风险**: 无限超时意味着恶意/错误的长时间任务不会被自动终止。
+**建议**: 考虑增加可配置的最大超时上限。
+**工作量**: 小
 
 ---
 
@@ -49,94 +71,13 @@
 
 ## P2 — 可维护性
 
-### #4 Redact-Secrets 重复定义 7 次
-
-**现状**: 以下 7 个脚本各自定义了完全相同的 `Redact-Secrets` 函数:
-- `cc-command.ps1`
-- `cc-run.ps1`
-- `cc-status.ps1`
-- `cc-last.ps1`
-- `claude-code-relay.ps1`
-- `claude-code-summary.ps1`
-- `mobile-status.ps1`
-
-**建议**: 创建 `tools/lib/secret-utils.ps1`，其他脚本 dot-source 引用:
-```powershell
-. "$PSScriptRoot\lib\secret-utils.ps1"
-```
-
-**工作量**: 小 (创建 1 个新文件 + 修改 7 个文件的引用)
-
----
-
 ### #5 路径硬编码
 
-**现状**: `F:\Unity6_AI` 以字符串形式硬编码在 15+ 个位置。
+**现状**: `config.json` 的 `projectRoot` 配置已通过 `tools/lib/config.ps1` 集中管理。但部分脚本仍有隐式路径依赖（如 `$PSScriptRoot\..\..` 相对定位）。
 
-**文件清单**:
-- `cc-command.ps1`: 1 处
-- `cc-run.ps1`: 1 处
-- `cc-run-big.ps1`: 1 处
-- `cc-status.ps1`: 1 处
-- `cc-last.ps1`: 1 处
-- `cc-session.ps1`: 2 处
-- `cc-session-add.ps1`: 2 处
-- `cc-session-remove.ps1`: 1 处
-- `cc-use.ps1`: 1 处
-- `claude-code-relay.ps1`: 3 处
-- `mobile-status.ps1`: 通过 `$PSScriptRoot` 相对定位 (已正确)
+**建议**: 所有路径统一通过 `config.ps1` 提供的 `$Script:ProjectRoot` / `$Script:WorktreesRoot` 访问。
 
-**建议**: 
-- 方案 A: 各脚本用 `$PSScriptRoot\..` 相对定位（适合在项目内的脚本）
-- 方案 B: 创建 `tools/lib/project-config.ps1` 统一管理项目路径
-
-**工作量**: 中 (需要逐脚本测试)
-
----
-
-### #6 `cc-command.ps1` 路由用串行 if
-
-**现状**: 行 94-124 用连续 `if` 而非 `elseif`，依赖 `Invoke-ChildScript` 内 `exit` 终止。
-
-**风险**: 新增命令时容易忘记 `exit`，导致多个分支执行。
-
-**建议**: 改为 `if/elseif/else` 结构，语义清晰。
-
-**工作量**: 小 (~10 行调整)
-
----
-
-### #7 中文字符串用 Unicode 码点数组
-
-**现状**: 所有中文 UI 字符串使用 `-join ([char[]]@(0x...))` 形式，例如:
-```powershell
-$SectionDone = -join ([char[]]@(0x5B8C, 0x6210, 0x5185, 0x5BB9))
-# 实际 = "完成内容"
-```
-
-**影响**: 代码完全不可读。新增或修改一个中文字符串需要查 Unicode 码表。
-
-**原因**: 历史遗留，为了规避早期 PowerShell 版本在管道中的 UTF-8 问题。
-
-**建议**: 当前环境已通过 `[Console]::OutputEncoding` + `$OutputEncoding` 正确设置了 UTF-8。直接写中文字符串并验证输出。
-
-**工作量**: 中 (需要逐脚本转换并测试跨平台输出)
-
----
-
-### #8 无日志轮转
-
-**现状**: `Logs/ClaudeRelay/` 每次执行生成 4 个文件，无限累积。
-
-**建议**: relay 脚本末尾加清理逻辑:
-```powershell
-# 保留最近 30 天
-Get-ChildItem $LogRoot -File | Where-Object {
-    $_.LastWriteTime -lt (Get-Date).AddDays(-30)
-} | Remove-Item
-```
-
-**工作量**: 小 (~5 行)
+**工作量**: 小
 
 ---
 
@@ -170,16 +111,6 @@ Get-ChildItem $LogRoot -File | Where-Object {
 3. DeepSeek API 连通
 4. Workspace 目录存在
 5. current-task.json 可读写
-
-输出:
-```
-管线状态:
-  Git: ✅
-  Claude CLI: ✅ (v1.x.x)
-  DeepSeek: ✅ (200 OK, 120ms)
-  Workspace: ✅ F:\Unity6_AI
-  日志: ✅ (234 个文件, 45MB)
-```
 
 **工作量**: 小 (新建 cc-health.ps1 ~80 行)
 
@@ -222,20 +153,15 @@ Get-ChildItem $LogRoot -File | Where-Object {
 
 ---
 
-## 优先级排序建议
+## 优先级排序 (更新)
 
 | 优先级 | 问题编号 | 说明 |
 |--------|----------|------|
-| 立即 | #1 | cc-run-big 安全防护 |
-| 立即 | #4 | Redact-Secrets 去重 |
-| 短期 | #6 | cc-command 改 elseif |
-| 短期 | #8 | 日志轮转 |
 | 短期 | #10 | 管线健康检查 |
-| 中期 | #5 | 路径去硬编码 |
-| 中期 | #3 | 自动重试 |
-| 中期 | #11 | cc-run --session |
-| 长期 | #7 | 中文码点数组替换 |
-| 长期 | #2 | 并发队列 |
+| 短期 | #3 | 自动重试 |
+| 短期 | #11 | cc-run --session |
+| 中期 | #5 | 路径去隐式依赖 |
+| 中期 | #1 | cc-run-big 超时上限 |
 | 长期 | #9 | 任务队列 |
-| 可选 | #12 | 安全 commit |
+| 长期 | #12 | 安全 commit |
 | 可选 | #13 | 文档对齐 |
