@@ -235,6 +235,9 @@ openclaw gateway
 | `/cc-session` | 查询 | 列出已注册开发会话 |
 | `/cc-session-add <name> <path>` | 管理 | 注册新会话 |
 | `/cc-use <name>` | 管理 | 切换工作会话 |
+| `/cc-project-list` | 查询 | 列出已注册项目 |
+| `/cc-project-use <name>` | 管理 | 切换活跃项目 |
+| `/cc-health` | 查询 | 全链路健康检查 |
 | `/oc-session` | 查询 | OpenClaw 进程/模型/配置 |
 | `/cc-help` | 查询 | 显示此命令列表 |
 
@@ -260,18 +263,25 @@ openclaw gateway
 ### 安全层级
 
 ```
+防线 0: 项目注册白名单
+  relay 校验 workspace 必须在 ~/.openclaw/cc-projects.json 已注册项目中
+  未注册路径 → 拒绝执行。新增项目需本机手动编辑，不可远程添加。
+
 防线 1: Workspace 隔离
-  GetFullPath + StartsWith 校验，路径必须在项目根或 worktrees 下
+  GetFullPath + StartsWith 校验，路径必须在已注册项目根或 worktrees 下
 
 防线 2: 工具白名单/黑名单
   --allowedTools:  Read,Glob,Grep,Edit,Write,Bash(powershell ...)
   --disallowedTools: Bash(git push:*), Bash(rm *:), Bash(del *:)
 
-防线 3: Prompt 注入防御
+防线 3: 并发互斥
+  System.IO.FileStream 排他锁，防止两个 relay 同时修改同一项目
+
+防线 4: Prompt 注入防御
   编辑模式下在用户 Prompt 前注入 ~40 行安全规则
 
-防线 4: 事后审计
-  Git SHA256 快照 (before/after) + 密钥脱敏 (10 种正则) + 结构化日志 (4 文件/次)
+防线 5: 事后审计
+  Git SHA256 快照 (before/after) + 密钥脱敏 (10 种正则) + 结构化日志 (4 文件/次) + 自动重试 (2 次)
 ```
 
 ### 日志系统
@@ -349,39 +359,70 @@ powershell -File tools/cc-session-add.ps1 -Name my-branch -Workspace "F:\MyProje
 
 ---
 
+## 多项目管理
+
+管线的安全模型基于**项目注册白名单**。`~\.openclaw\cc-projects.json` 列出了所有允许操作的项目：
+
+```json
+[
+  { "name": "unity6-ai",    "workspace": "F:\\Unity6_AI",       "active": true },
+  { "name": "dont-sitdown", "workspace": "F:\\DONT_SITDOWN",     "active": false }
+]
+```
+
+在飞书中：
+
+```
+/cc-project-list              →  查看所有已注册项目
+/cc-project-use dont-sitdown  →  切换到管线项目
+```
+
+任何 relay 任务执行前，workspace 必须匹配已注册项目的路径或其 worktrees 子目录，否则拒绝执行。
+
+新项目需在电脑上手动编辑 `cc-projects.json`，不可通过飞书远程添加——这保证了攻击者即使控制飞书也无法将管线指向未授权目录。
+
+---
+
 ## 项目结构
 
 ```
 DONT_SITDOWN/
 ├── README.md                     ← 你正在读
 ├── LICENSE                       MIT
+├── CLAUDE.md                     AI 协作指令
+├── AGENTS.md                     AI 代理交接说明
+├── SECURITY.md                   安全策略
+├── CONTRIBUTING.md               贡献指南
 ├── .gitignore
+├── .gitattributes                行尾规范化
 ├── config.example.json           配置模板
 ├── config.json                   你的配置 (git-ignored, 由 install.ps1 生成)
 ├── install.ps1                   交互式安装向导
 ├── setup-openclaw.ps1            OpenClaw 安装和配置向导
 │
 ├── tests/
-│   └── relay.tests.ps1           31 个 Pester 测试 (Redact-Secrets, 路径校验, Git 快照对比, 参数校验)
+│   └── relay.tests.ps1           31 个 Pester 测试
 │
 ├── tools/
 │   ├── lib/
-│   │   ├── config.ps1            共享路径模块 (读 config.json → 提供 $ProjectRoot 等)
-│   │   └── secret-utils.ps1      共享脱敏模块 (Redact-Secrets, 10 种正则)
+│   │   ├── config.ps1            共享路径模块
+│   │   └── secret-utils.ps1      共享脱敏模块
 │   │
-│   ├── cc-command.ps1            命令路由器 (11 条路由, if/elseif 链)
-│   ├── cc-run.ps1                编辑模式入口 (调 relay -AllowEdit)
-│   ├── cc-run-big.ps1            大任务模式入口 (调 relay -AllowEdit -MaxMinutes 0)
+│   ├── cc-command.ps1            命令路由器 (13 条路由, if/elseif 链)
+│   ├── cc-run.ps1                编辑模式入口
+│   ├── cc-run-big.ps1            大任务模式入口
 │   ├── cc-status.ps1             当前 relay 任务状态
 │   ├── cc-last.ps1               最近 relay 执行摘要
 │   ├── cc-session.ps1            已注册会话列表
-│   ├── cc-session-add.ps1        注册新会话 (绑定 worktree)
-│   ├── cc-use.ps1                切换当前工作会话
-│   ├── oc-session.ps1            OpenClaw 运行时检查 (进程/模型/配置)
+│   ├── cc-session-add.ps1        注册新会话
+│   ├── cc-use.ps1                切换工作会话
+│   ├── cc-project.ps1            多项目管理 (list/use)
+│   ├── cc-health.ps1             全链路健康检查
+│   ├── oc-session.ps1            OpenClaw 运行时检查
 │   │
-│   ├── claude-code-relay.ps1     核心安全中继 (~430 行，含文件锁、日志轮转)
+│   ├── claude-code-relay.ps1     核心安全中继 (文件锁 + 日志轮转 + 自动重试)
 │   ├── claude-code-summary.ps1   摘要生成器
-│   ├── mobile-status.ps1         项目状态报告 (git + Unity logs)
+│   ├── mobile-status.ps1         项目状态报告
 │   ├── feishu-progress-command.ps1 飞书进度上报包装
 │   ├── unity-log-summary.ps1     Unity 日志扫描
 │   └── verify-pipeline.ps1       管线验证脚本
@@ -390,19 +431,24 @@ DONT_SITDOWN/
 │   ├── settings.example.json     Claude Code 权限配置模板
 │   └── rules/
 │       ├── SOUL.example.md       OpenClaw Agent SOUL.md 模板
-│       └── remote-commands.md    远程指令规则 (注入 Claude 上下文)
+│       └── remote-commands.md    远程指令规则
 │
-├── docs/
-│   ├── architecture.md           完整架构文档 + 数据流图
-│   ├── scripts-reference.md      15 个脚本逐一说明 (参数/流程/边界)
-│   ├── configuration.md          所有配置文件字段说明
-│   ├── deployment.md             从零部署 (含故障排除)
-│   ├── operations.md             日常操作 + 排障指南
-│   ├── improvement-roadmap.md    改进路线 (已完成 7 项, 剩余 6 项)
-│   └── pipeline-deep-dive.md     全链路深度拆解
+├── .github/
+│   ├── workflows/
+│   │   └── test.yml              CI: push/PR 自动 Pester 测试
+│   ├── ISSUE_TEMPLATE.md
+│   ├── PULL_REQUEST_TEMPLATE.md
+│   └── CODEOWNERS
 │
-└── .github/
-    └── ISSUE_TEMPLATE.md
+└── docs/
+    ├── architecture.md           完整架构文档 + 数据流图
+    ├── pipeline-deep-dive.md     全链路深度拆解
+    ├── scripts-reference.md      已废弃 (以 README 为准)
+    ├── configuration.md          所有配置文件字段说明
+    ├── installation.md           新电脑从零安装指南
+    ├── deployment.md             从零部署 (含故障排除)
+    ├── operations.md             日常操作 + 排障指南
+    └── improvement-roadmap.md    改进路线 (已完成 7 项, 剩余 6 项)
 ```
 
 ---
