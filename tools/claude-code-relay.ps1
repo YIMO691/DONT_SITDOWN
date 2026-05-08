@@ -326,47 +326,64 @@ $TaskBase = @{
 Write-CurrentTask -Task $TaskBase
 
 try {
-    try {
-        $ClaudeCommand = Get-Command "claude" -ErrorAction Stop
-        if ([string]::IsNullOrWhiteSpace($EffectiveSession)) {
-            $ClaudeArgs = @("-p", $WrappedTask, "--output-format", "text", "--allowedTools", $AllowedTools)
-        } else {
-            $ClaudeArgs = @("-p", "--resume", $EffectiveSession, $WrappedTask, "--output-format", "text", "--allowedTools", $AllowedTools)
-        }
-        if (-not [string]::IsNullOrWhiteSpace($DisallowedTools)) { $ClaudeArgs += @("--disallowedTools", $DisallowedTools) }
+    $MaxRetries = 2
+    $RetryDelay = 10
+    for ($Attempt = 0; $Attempt -le $MaxRetries; $Attempt++) {
+        try {
+            if ($Attempt -gt 0) {
+                Write-Output "Claude Code retry $Attempt/$MaxRetries after $RetryDelay seconds..."
+                Start-Sleep -Seconds $RetryDelay
+            }
 
-        $TimeoutSeconds = $MaxMinutes * 60  # 0 = no timeout
-        $ClaudeJob = Start-Job -ScriptBlock {
-            param([string]$CommandPath, [string[]]$CommandArgs, [string]$WorkingDirectory)
-            [Console]::InputEncoding = [System.Text.UTF8Encoding]::new()
-            [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
-            $OutputEncoding = [System.Text.UTF8Encoding]::new()
-            $env:LANG = "zh_CN.UTF-8"; $env:LC_ALL = "zh_CN.UTF-8"
-            Set-Location -LiteralPath $WorkingDirectory
-            $jobOutput = & $CommandPath @CommandArgs 2>&1
-            $jobExitCode = $LASTEXITCODE
-            if ($null -eq $jobExitCode) { $jobExitCode = 0 }
-            [pscustomobject]@{ exitCode = $jobExitCode; output = (($jobOutput | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine) }
-        } -ArgumentList $ClaudeCommand.Source, $ClaudeArgs, $ProjectRoot
+            $ClaudeCommand = Get-Command "claude" -ErrorAction Stop
+            if ([string]::IsNullOrWhiteSpace($EffectiveSession)) {
+                $ClaudeArgs = @("-p", $WrappedTask, "--output-format", "text", "--allowedTools", $AllowedTools)
+            } else {
+                $ClaudeArgs = @("-p", "--resume", $EffectiveSession, $WrappedTask, "--output-format", "text", "--allowedTools", $AllowedTools)
+            }
+            if (-not [string]::IsNullOrWhiteSpace($DisallowedTools)) { $ClaudeArgs += @("--disallowedTools", $DisallowedTools) }
 
-        if ($MaxMinutes -eq 0) {
-            $CompletedJob = Wait-Job -Job $ClaudeJob
-        } else {
-            $CompletedJob = Wait-Job -Job $ClaudeJob -Timeout $TimeoutSeconds
+            $TimeoutSeconds = $MaxMinutes * 60
+            $ClaudeJob = Start-Job -ScriptBlock {
+                param([string]$CommandPath, [string[]]$CommandArgs, [string]$WorkingDirectory)
+                [Console]::InputEncoding = [System.Text.UTF8Encoding]::new()
+                [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
+                $OutputEncoding = [System.Text.UTF8Encoding]::new()
+                $env:LANG = "zh_CN.UTF-8"; $env:LC_ALL = "zh_CN.UTF-8"
+                Set-Location -LiteralPath $WorkingDirectory
+                $jobOutput = & $CommandPath @CommandArgs 2>&1
+                $jobExitCode = $LASTEXITCODE
+                if ($null -eq $jobExitCode) { $jobExitCode = 0 }
+                [pscustomobject]@{ exitCode = $jobExitCode; output = (($jobOutput | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine) }
+            } -ArgumentList $ClaudeCommand.Source, $ClaudeArgs, $ProjectRoot
+
+            if ($MaxMinutes -eq 0) {
+                $CompletedJob = Wait-Job -Job $ClaudeJob
+            } else {
+                $CompletedJob = Wait-Job -Job $ClaudeJob -Timeout $TimeoutSeconds
+            }
+            if ($CompletedJob) {
+                $JobResult = Receive-Job -Job $ClaudeJob
+                $ExitCode = [int]$JobResult.exitCode
+                $RawOutput = [string]$JobResult.output
+            } else {
+                Stop-Job -Job $ClaudeJob | Out-Null
+                $ExitCode = 124
+                $RawOutput = "Claude Code invocation timed out after $MaxMinutes minute(s)."
+            }
+            Remove-Job -Job $ClaudeJob -Force | Out-Null
+
+            # Success: exit code 0 or non-retryable failure, break loop
+            break
+        } catch {
+            if ($Attempt -lt $MaxRetries -and $_.Exception.Message -match "network|timeout|500|503|rate.?limit|unavailable") {
+                $LastError = $_.Exception.Message
+                continue
+            }
+            $ExitCode = 127
+            $RawOutput = "Claude Code invocation failed: $($_.Exception.Message)"
+            break
         }
-        if ($CompletedJob) {
-            $JobResult = Receive-Job -Job $ClaudeJob
-            $ExitCode = [int]$JobResult.exitCode
-            $RawOutput = [string]$JobResult.output
-        } else {
-            Stop-Job -Job $ClaudeJob | Out-Null
-            $ExitCode = 124
-            $RawOutput = "Claude Code invocation timed out after $MaxMinutes minute(s)."
-        }
-        Remove-Job -Job $ClaudeJob -Force | Out-Null
-    } catch {
-        $ExitCode = 127
-        $RawOutput = "Claude Code invocation failed: $($_.Exception.Message)"
     }
 
     $GitStatusAfter = Get-GitStatusSnapshot

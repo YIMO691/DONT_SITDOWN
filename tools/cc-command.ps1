@@ -20,8 +20,8 @@ $SessionScript = Join-Path $PSScriptRoot "cc-session.ps1"
 $StatusScript = Join-Path $PSScriptRoot "cc-status.ps1"
 $LastScript = Join-Path $PSScriptRoot "cc-last.ps1"
 $SessionAddScript = Join-Path $PSScriptRoot "cc-session-add.ps1"
-$SessionRemoveScript = Join-Path $PSScriptRoot "cc-session-remove.ps1"
 $OcSessionScript = Join-Path $PSScriptRoot "oc-session.ps1"
+$HealthScript = Join-Path $PSScriptRoot "cc-health.ps1"
 
 $EmptyMessage = "请在 /cc 后输入要转发给 Claude Code 的任务。"
 $EmptyUseMessage = "请在 /cc-use 后输入 Claude Code session 名称或 ID。"
@@ -108,6 +108,9 @@ if (-not [string]::IsNullOrWhiteSpace($MessageText)) {
     elseif ($trimmedMessage -eq "/oc-session") {
         Invoke-ChildScript -ScriptPath $OcSessionScript
     }
+    elseif ($trimmedMessage -eq "/cc-health") {
+        Invoke-ChildScript -ScriptPath $HealthScript -Arguments @("-Brief")
+    }
     elseif ($trimmedMessage -eq "/cc-help") {
         Write-Output ""
         Write-Output "Feishu-CC Pipeline Commands:"
@@ -121,6 +124,7 @@ if (-not [string]::IsNullOrWhiteSpace($MessageText)) {
         Write-Output "  /cc-session-add     Register new session"
         Write-Output "  /cc-use <name>      Switch active session"
         Write-Output "  /oc-session         OpenClaw runtime status"
+        Write-Output "  /cc-health          Pipeline health check"
         Write-Output "  /cc-help            Show this help"
         Write-Output ""
         exit 0

@@ -1,0 +1,38 @@
+name: Test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  pester:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Pester tests
+        shell: powershell
+        run: |
+          # Skip integration tests (no config.json on CI)
+          Install-Module -Name Pester -Force -SkipPublisherCheck -MaximumVersion 5.0.0
+          Import-Module Pester -MinimumVersion 5.0.0
+          Invoke-Pester -Path tests/relay.tests.ps1 -ExcludeTag Integration -CI
+
+      - name: Verify scripts are syntactically valid
+        shell: powershell
+        run: |
+          $errors = @()
+          Get-ChildItem -Recurse -Filter *.ps1 -Path tools | ForEach-Object {
+              try {
+                  $null = Get-Command $_.FullName -Syntax -ErrorAction Stop
+              } catch {
+                  $errors += "$($_.Name): $_"
+              }
+          }
+          if ($errors.Count -gt 0) {
+              Write-Error "Syntax errors found:`n$($errors -join "`n")"
+              exit 1
+          }
+          Write-Output "All scripts pass syntax check."

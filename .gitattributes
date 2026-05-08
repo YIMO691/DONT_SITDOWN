@@ -1,5 +1,5 @@
-# PowerShell scripts: CRLF on Windows, UTF-8 with BOM
-*.ps1 text eol=crlf working-tree-encoding=UTF-8-BOM
+# PowerShell scripts: CRLF on Windows
+*.ps1 text eol=crlf
 
 # Markdown: LF, UTF-8
 *.md text eol=lf
