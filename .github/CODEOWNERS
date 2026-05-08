@@ -1,0 +1,6 @@
+# Default owner
+* @YIMO691
+
+# Security-critical files require additional review
+tools/claude-code-relay.ps1 @YIMO691
+tools/lib/secret-utils.ps1 @YIMO691
