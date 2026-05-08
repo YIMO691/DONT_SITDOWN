@@ -37,7 +37,9 @@ $ModifiedLabel = "修改文件"
 $DeletedLabel = "删除文件"
 $NoneLabel = "无"
 $DeleteWarningLabel = "警告：检测到删除文件，请人工确认。"
-$WorkspaceLimitMessage = "安全限制：workspace 只允许位于 project 或 worktrees 下。"
+$WorkspaceLimitMessage = "安全限制：workspace 只允许位于已注册项目目录下。"
+
+$ProjectRegistryPath = Join-Path $Script:OpenClawStateDir "cc-projects.json"
 
 function Ensure-TargetConfig {
     $configDir = Split-Path -Parent $Script:TargetConfigPath
@@ -95,6 +97,22 @@ function Resolve-RelayWorkspace {
     }
     $resolved = (Resolve-Path -LiteralPath $candidate).ProviderPath
     $allowed = (Test-PathInsideRoot -Path $resolved -Root $Script:ProjectRoot) -or (Test-PathInsideRoot -Path $resolved -Root $Script:WorktreesRoot)
+
+    # Also allow any workspace registered in cc-projects.json
+    if (-not $allowed -and (Test-Path -LiteralPath $ProjectRegistryPath)) {
+        try {
+            $registry = @(Get-Content -LiteralPath $ProjectRegistryPath -Raw -Encoding UTF8 | ConvertFrom-Json)
+            foreach ($entry in $registry) {
+                $entryWorkspace = $entry.workspace
+                $entryWorktrees = if ($entry.worktreesRoot) { $entry.worktreesRoot } else { "$entryWorkspace.worktrees" }
+                if ((Test-PathInsideRoot -Path $resolved -Root $entryWorkspace) -or (Test-PathInsideRoot -Path $resolved -Root $entryWorktrees)) {
+                    $allowed = $true
+                    break
+                }
+            }
+        } catch {}
+    }
+
     if (-not $allowed) {
         throw $WorkspaceLimitMessage
     }
