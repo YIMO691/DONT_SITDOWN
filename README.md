@@ -481,6 +481,7 @@ Remove-Item -Recurse $env:USERPROFILE\.openclaw
 | [docs/scripts-reference.md](docs/scripts-reference.md) | 每个脚本的参数、流程、边界情况 |
 | [docs/configuration.md](docs/configuration.md) | config.json / openclaw.json / cc-target.json 字段全解 |
 | [docs/deployment.md](docs/deployment.md) | 从零到飞书可用的逐步指南 |
+| [docs/installation.md](docs/installation.md) | 新电脑从零安装指南 |
 | [docs/operations.md](docs/operations.md) | 日常操作、会话管理、排障 |
 | [docs/improvement-roadmap.md](docs/improvement-roadmap.md) | 已知问题 + 优先级改进计划 |
 
