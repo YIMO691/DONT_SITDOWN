@@ -207,9 +207,8 @@ powershell -NoProfile -ExecutionPolicy Bypass \
 
 ```powershell
 # cc-command.ps1 开头
-param([string]$MessageText, [string]$PromptText)
+param([string]$MessageText)
 
-. "$PSScriptRoot\lib\config.ps1"        # 读 config.json → $ProjectRoot
 . "$PSScriptRoot\lib\secret-utils.ps1"  # Redact-Secrets 函数
 
 $RelayScript = Join-Path $PSScriptRoot "claude-code-relay.ps1"
@@ -219,17 +218,17 @@ $RelayScript = Join-Path $PSScriptRoot "claude-code-relay.ps1"
 ### 4.2 路由表
 
 ```powershell
-$trimmedMessage = $MessageText.Trim()
+$trimmedMessage = Normalize-MessageText -Text $MessageText
 # → "/cc-run 修复 EnemyFSM.cs 第 45 行空引用"
 
 if ($trimmedMessage -eq "/cc-status") { ... }           # × 不匹配
 elseif ($trimmedMessage -eq "/cc-last") { ... }         # × 不匹配
-elseif ($trimmedMessage.StartsWith("/cc-session-add"))  # × 不匹配
+elseif ($trimmedMessage -match '^/cc-session-add(?:\s|$)')  # × 不匹配
 elseif ($trimmedMessage -eq "/cc-session") { ... }      # × 不匹配
-elseif ($trimmedMessage.StartsWith("/cc-use")) { ... }   # × 不匹配
-elseif ($trimmedMessage.StartsWith("/cc-run-big")) {     # × 不匹配 (/cc-run 不以 /cc-run-big 开头)
-elseif ($trimmedMessage.StartsWith("/cc-run")) {         # ✅ 命中！
-    $runPromptText = $trimmedMessage.Substring(7).Trim()
+elseif ($trimmedMessage -match '^/cc-use(?:\s|$)') { ... }   # × 不匹配
+elseif ($trimmedMessage -match '^/cc-run-big(?:\s|$)') {     # × 不匹配
+elseif ($trimmedMessage -match '^/cc-run(?:\s|$)') {         # ✅ 命中！
+    $runPromptText = $trimmedMessage.Substring("/cc-run".Length).Trim()
     # → "修复 EnemyFSM.cs 第 45 行空引用"
     Invoke-Relay -RelayArgs @("-PromptText", $runPromptText, "-AllowEdit")
 }

@@ -2,14 +2,14 @@
 
 ## 总览
 
-共 15 个 PowerShell 脚本，分为五层：
+共 16 个 PowerShell 脚本，分为五层：
 
 | 层 | 脚本 | 职责 |
 |----|------|------|
 | 入口路由 | `cc-command.ps1` | 解析飞书命令，分发到对应脚本 |
 | 执行入口 | `cc-run.ps1`, `cc-run-big.ps1` | 编辑/大任务两种模式入口 |
 | 核心中继 | `claude-code-relay.ps1` | 安全包装、执行、审计 |
-| 支持工具 | `cc-status.ps1`, `cc-last.ps1`, `cc-session.ps1`, `cc-use.ps1`, `cc-session-add.ps1` | 状态查询与会话管理 |
+| 支持工具 | `cc-status.ps1`, `cc-last.ps1`, `cc-session.ps1`, `cc-use.ps1`, `cc-session-add.ps1`, `cc-project.ps1`, `cc-health.ps1` | 状态查询、会话管理、多项目管理与健康检查 |
 | 辅助输出 | `claude-code-summary.ps1`, `mobile-status.ps1`, `feishu-progress-command.ps1`, `unity-log-summary.ps1`, `oc-session.ps1` | 摘要生成与状态报告 |
 
 ---
@@ -24,20 +24,26 @@
 | 参数 | 类型 | 说明 |
 |------|------|------|
 | `-MessageText` | string | 飞书原始消息文本 |
-| `-PromptText` | string | 解析后的提示词（通常由 MessageText 派生） |
 
 **路由表**:
 | 输入 | 目标脚本 | 模式 |
 |------|----------|------|
 | `/cc-status` | cc-status.ps1 | 直接输出 |
 | `/cc-last` | cc-last.ps1 | 直接输出 |
+| `/cc-session-add <name> <path>` | cc-session-add.ps1 | 直接输出 |
 | `/cc-session` | cc-session.ps1 | 直接输出 |
 | `/cc-use <name>` | cc-use.ps1 -Session \<name\> | 直接输出 |
-| `/cc-run <task>` | cc-run.ps1 -PromptText \<task\> | 编辑模式 |
+| `/cc-run-big <task>` | claude-code-relay.ps1 -AllowEdit -MaxMinutes 0 | 大任务编辑模式 |
+| `/cc-run <task>` | claude-code-relay.ps1 -AllowEdit | 编辑模式 |
+| `/cc-project-list` | cc-project.ps1 -Action list | 直接输出 |
+| `/cc-project-use <name>` | cc-project.ps1 -Action use -Name \<name\> | 直接输出 |
+| `/cc-health` | cc-health.ps1 -Brief | 直接输出 |
+| `/oc-session` | oc-session.ps1 | 直接输出 |
+| `/cc-help` | 内置帮助文本 | 直接输出 |
 | `/cc <message>` | claude-code-relay.ps1 -RawPassThrough | 只读模式 |
-| 无 `/cc` 前缀 | 返回提示信息 | - |
+| 其他命令 | 返回 `/cc-help` 提示 | - |
 
-**已知问题**: 路由使用串行 `if` 而非 `elseif`，依赖 `Invoke-ChildScript` 内 `exit` 终止。`/cc-run` 会同时匹配 `/cc-run` 和 `/cc` 的通用分支（通过 `/cc-run` 的 exit 先终止规避）。
+路由使用精确边界匹配，`/cc-run-big` 在 `/cc-run` 之前判断，避免前缀误匹配。
 
 ---
 
@@ -64,17 +70,16 @@
 
 ### cc-run-big.ps1
 
-**职责**: 大任务模式。直接调用 `claude -p`，不经过 relay。
+**职责**: 大任务模式。通过 `claude-code-relay.ps1 -AllowEdit -MaxMinutes 0` 执行，无时间上限但仍保留 relay 安全防护。
 
 **参数**: 通过 `$args` 接收
 
 **流程**:
 1. 拼接参数为 prompt 文本
 2. 保存 prompt 到 `Logs/ClaudeRelay/bigtask-{timestamp}.txt`
-3. 打印警告："大任务模式不经过 relay 安全防护"
-4. 不实际执行 claude（仅保存提示词）
+3. 调用 `claude-code-relay.ps1 -PromptText <task> -AllowEdit -MaxMinutes 0`
 
-**安全**: ⚠️ 此模式绕过 relay 所有安全防护。脚本本身只保存提示词，但提示用户自己去执行。
+**安全**: 仍经过 relay 的 workspace 校验、工具白名单/黑名单、脱敏和审计；区别是没有超时上限。
 
 ---
 
@@ -255,16 +260,6 @@ Execution requirements:
 
 ---
 
-### cc-session-remove.ps1
-
-**职责**: 移除一个已注册的会话。
-
-**保护**:
-- 禁止移除 `unity6ai-main` 默认会话
-- Name 不存在 → 报错
-
----
-
 ### cc-use.ps1
 
 **职责**: 切换当前工作会话。
@@ -279,6 +274,38 @@ Execution requirements:
 - 找到 → 使用注册的 configuration
 - 未找到 → 将输入当作 session ID 直接使用
 - 更新 `cc-target.json`
+
+---
+
+### cc-project.ps1
+
+**职责**: 列出和切换已注册项目。
+
+**参数**:
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `-Action` | string | `list` 或 `use` |
+| `-Name` | string | 切换目标项目名称 |
+
+**数据源**: `~\.openclaw\cc-projects.json`
+
+**行为**:
+- `list` → 输出所有已注册项目和当前活跃项目
+- `use` → 切换活跃项目并更新 `cc-target.json`
+- 未注册项目不能通过飞书远程添加，需要本机手动编辑注册表
+
+---
+
+### cc-health.ps1
+
+**职责**: 检查 Feishu-CC 管线的关键依赖和运行状态。
+
+**参数**:
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `-Brief` | switch | 输出适合飞书查看的简短健康检查 |
+
+**检查项**: Git、Claude CLI、DeepSeek API、workspace、日志目录、任务状态、配置文件。
 
 ---
 

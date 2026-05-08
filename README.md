@@ -92,6 +92,9 @@ OpenClaw AI（不分析消息内容）
 /cc-use ...         → cc-use.ps1（管理）
 /cc-run-big ...     → claude-code-relay.ps1 -AllowEdit -MaxMinutes 0（编辑，无超时）
 /cc-run ...         → claude-code-relay.ps1 -AllowEdit（编辑，20min 超时）
+/cc-project-list    → cc-project.ps1 -Action list（查询）
+/cc-project-use ... → cc-project.ps1 -Action use（管理）
+/cc-health          → cc-health.ps1 -Brief（查询）
 /oc-session         → oc-session.ps1（OpenClaw 运行时状态）
 /cc-help            → 命令帮助
 /cc ...             → claude-code-relay.ps1 -RawPassThrough（只读查询，兜底）
@@ -526,6 +529,7 @@ Remove-Item -Recurse $env:USERPROFILE\.openclaw
 | [docs/architecture.md](docs/architecture.md) | 完整架构 + 数据流图 + 安全层级 |
 | [docs/scripts-reference.md](docs/scripts-reference.md) | 每个脚本的参数、流程、边界情况 |
 | [docs/configuration.md](docs/configuration.md) | config.json / openclaw.json / cc-target.json 字段全解 |
+| [docs/admin-manual.md](docs/admin-manual.md) | Project / Session / Target 的增删改查操作手册 |
 | [docs/deployment.md](docs/deployment.md) | 从零到飞书可用的逐步指南 |
 | [docs/installation.md](docs/installation.md) | 新电脑从零安装指南 |
 | [docs/operations.md](docs/operations.md) | 日常操作、会话管理、排障 |

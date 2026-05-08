@@ -23,7 +23,7 @@ jobs:
           Import-Module Pester -RequiredVersion $module.Version -Force
 
           # Skip integration tests (no config.json on CI runner)
-          $unitGroupFilters = @("Redact-Secrets*", "Test-PathInsideRoot*", "Compare-GitStatusSnapshots*")
+          $unitGroupFilters = @("Redact-Secrets*", "Test-PathInsideRoot*", "Compare-GitStatusSnapshots*", "cc-command command table*")
           $invokePesterParameters = (Get-Command Invoke-Pester).Parameters
           if ($invokePesterParameters.ContainsKey("FullNameFilter")) {
               Invoke-Pester -Path tests/relay.tests.ps1 -FullNameFilter $unitGroupFilters

@@ -238,6 +238,74 @@ Describe "Compare-GitStatusSnapshots" {
     }
 }
 
+Describe "cc-command command table" {
+    BeforeAll {
+        $RepoRoot = Split-Path -Parent $PSScriptRoot
+        $script:CommandScript = Join-Path $RepoRoot "tools\cc-command.ps1"
+
+        function Assert-True {
+            param([bool]$Condition, [string]$Message = "Expected condition to be true.")
+            if (-not $Condition) { throw $Message }
+        }
+
+        function Assert-Equal {
+            param($Actual, $Expected)
+            if ($Actual -ne $Expected) {
+                throw "Expected <$Expected> but got <$Actual>."
+            }
+        }
+    }
+
+    It "shows every registered Feishu command in help without config.json" {
+        $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $script:CommandScript -MessageText "/cc-help" 2>&1
+        $text = $output | Out-String
+        Assert-Equal $LASTEXITCODE 0
+
+        $commands = @(
+            "/cc <query>",
+            "/cc-run <task>",
+            "/cc-run-big <task>",
+            "/cc-status",
+            "/cc-last",
+            "/cc-session",
+            "/cc-session-add <name> <path>",
+            "/cc-use <name>",
+            "/cc-project-list",
+            "/cc-project-use <name>",
+            "/cc-health",
+            "/oc-session",
+            "/cc-help"
+        )
+
+        foreach ($command in $commands) {
+            Assert-True ($text -match [regex]::Escape($command)) "Missing command in /cc-help: $command"
+        }
+    }
+
+    It "does not treat longer unknown /cc prefixes as read-only /cc queries" {
+        $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $script:CommandScript -MessageText "/cc-runner test" 2>&1
+        $text = $output | Out-String
+        Assert-Equal $LASTEXITCODE 0
+        Assert-True ($text -match "/cc-help")
+    }
+
+    It "extracts Feishu-wrapped slash commands before routing" {
+        $message = "[message_id: test]`nou_xxx: /cc-help"
+        $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $script:CommandScript -MessageText $message 2>&1
+        $text = $output | Out-String
+        Assert-Equal $LASTEXITCODE 0
+        Assert-True ($text -match [regex]::Escape("/cc-project-list"))
+    }
+
+    It "does not accept removed /cc-project alias" {
+        $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $script:CommandScript -MessageText "/cc-project" 2>&1
+        $text = $output | Out-String
+        Assert-Equal $LASTEXITCODE 0
+        Assert-True ($text -match [regex]::Escape("/cc-help"))
+        Assert-True (-not ($text -match "Registered Projects"))
+    }
+}
+
 Describe "Relay parameter validation (integration)" {
     BeforeAll {
         $RepoRoot = Split-Path -Parent $PSScriptRoot

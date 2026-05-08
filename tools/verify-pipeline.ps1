@@ -34,6 +34,7 @@ $scripts = @(
     'tools\cc-command.ps1', 'tools\cc-run.ps1', 'tools\cc-run-big.ps1',
     'tools\cc-status.ps1', 'tools\cc-last.ps1', 'tools\cc-session.ps1',
     'tools\cc-session-add.ps1', 'tools\cc-use.ps1',
+    'tools\cc-project.ps1', 'tools\cc-health.ps1',
     'tools\oc-session.ps1', 'tools\claude-code-relay.ps1',
     'tools\claude-code-summary.ps1', 'tools\mobile-status.ps1'
 )
@@ -63,6 +64,8 @@ $routes = @(
     @{msg='/cc-run-big test';      desc='relay (MaxMinutes=0)'},
     @{msg='/cc-run test';          desc='relay (AllowEdit)'},
     @{msg='/cc test';              desc='relay (RawPassThrough)'},
+    @{msg='/cc-project-list';      desc='cc-project.ps1 list'},
+    @{msg='/cc-health';            desc='cc-health.ps1'},
     @{msg='/oc-session';           desc='oc-session.ps1'},
     @{msg='/cc-help';              desc='help'}
 )

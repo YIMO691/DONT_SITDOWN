@@ -12,6 +12,11 @@
 | `/cc-session` | - | 列出所有会话 |
 | `/cc-use <名称>` | `/cc-use unity6ai-m1` | 切换到 M1 会话 |
 | `/cc-session-add <名称> <路径>` | `/cc-session-add unity6ai-m2 F:\Unity6_AI.worktrees\m2` | 注册新会话 |
+| `/cc-project-list` | - | 列出已注册项目 |
+| `/cc-project-use <名称>` | `/cc-project-use unity6ai` | 切换活跃项目 |
+| `/cc-health` | - | 全链路健康检查 |
+| `/oc-session` | - | OpenClaw 进程/模型/配置 |
+| `/cc-help` | - | 显示命令列表 |
 
 
 ## 典型工作流
@@ -73,9 +78,11 @@
 public 字段改为 [SerializeField] private
 ```
 
-⚠️ 大任务模式不经过 relay 安全防护，谨慎使用。
+⚠️ 大任务模式经过 relay 安全防护，但没有时间上限。优先拆小任务，确实超过 20 分钟时再使用。
 
 ## 会话管理
+
+更完整的 Project / Session / Target 增删改查见 [项目与会话管理手册](admin-manual.md)。
 
 ### 会话是什么
 
@@ -107,6 +114,18 @@ git worktree add -b milestone/m2-behavior F:\Unity6_AI.worktrees\m2-behavior
 ```
 
 ### 移除会话
+
+当前没有 `/cc-session-remove` 远程命令。请在电脑本机手动编辑当前项目的 `.openclaw\cc-sessions.json`，删除对应 session 对象；如果该 session 正在使用，先 `/cc-use <其他会话>` 切走。
+
+如果这个 session 对应 git worktree，也需要本机确认后再删除：
+
+```powershell
+cd F:\Unity6_AI
+git worktree remove F:\Unity6_AI.worktrees\m2-behavior
+git branch -d milestone/m2-behavior
+```
+
+只在确认分支已合并或不再需要时删除分支。详细步骤见 [项目与会话管理手册](admin-manual.md)。
 
 ## 日志查询
 
@@ -148,7 +167,7 @@ Claude Code invocation timed out after 20 minute(s).
 
 **解决**:
 - 将任务拆分成多个较小的 `/cc-run`
-- 或使用 `/cc-run-big` (无超时限制，但无安全防护)
+- 或使用 `/cc-run-big` (无超时限制，仍经过 relay 安全防护)
 
 ### 任务执行失败
 
@@ -198,4 +217,4 @@ Claude Code invocation timed out after 20 minute(s).
 3. **一次一件事**: 每个 `/cc-run` 只做一件事，方便追踪和回滚
 4. **检查摘要**: 每次执行后看 `/cc-last` 确认变更符合预期
 5. **分支隔离**: 不同里程碑用 `/cc-use` 切换 worktree，避免交叉污染
-6. **不用 big 模式**: 除非任务确实需要超过 20 分钟且你充分信任该任务，否则不要用 `/cc-run-big`
+6. **慎用 big 模式**: `/cc-run-big` 仍有 relay 安全防护，但没有时间上限；除非任务确实需要超过 20 分钟，否则优先拆成多个 `/cc-run`

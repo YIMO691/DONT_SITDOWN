@@ -122,7 +122,6 @@ Claude Code 权限配置，控制哪些 Bash/Read 操作可无需用户确认。
 
 **管理命令**:
 - 添加: `/cc-session-add <Name> <Workspace> [-GitBranch <branch>] [-Role <role>]`
-- 会话移除需在终端操作 `tools/cc-session-remove.ps1 -Name <name>`
 - 查看: `/cc-session`
 
 **默认保护**: `unity6ai-main` 不可删除。

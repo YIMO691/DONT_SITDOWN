@@ -25,12 +25,17 @@
 │          F:\Unity6_AI\tools\cc-command.ps1                   │
 │                                                              │
 │  解析命令:                                                   │
-│    /cc-run <任务>    → cc-run.ps1                            │
+│    /cc-run <任务>    → claude-code-relay.ps1 -AllowEdit       │
+│    /cc-run-big <任务> → claude-code-relay.ps1 -AllowEdit      │
 │    /cc <消息>        → claude-code-relay.ps1 -RawPassThrough │
 │    /cc-status        → cc-status.ps1                         │
 │    /cc-last          → cc-last.ps1                           │
 │    /cc-session       → cc-session.ps1                        │
 │    /cc-use <名称>    → cc-use.ps1                            │
+│    /cc-project-list  → cc-project.ps1 -Action list           │
+│    /cc-project-use   → cc-project.ps1 -Action use            │
+│    /cc-health        → cc-health.ps1 -Brief                  │
+│    /oc-session       → oc-session.ps1                        │
 └──────────────────────┬──────────────────────────────────────┘
                        │
           ┌────────────┼──────────────┐
@@ -84,10 +89,9 @@
 ### 3. 大任务模式 (cc-run-big)
 
 - 触发: `/cc-run-big <任务>`
-- 直接调用 `claude -p`，不经过 relay 包装
+- 调用 `claude-code-relay.ps1 -AllowEdit -MaxMinutes 0`
 - 无超时限制
-- 无安全工具限制
-- 打印警告："大任务模式不经过 relay 安全防护"
+- 仍保留 relay 的 workspace 校验、工具白名单/黑名单、脱敏和审计
 
 ## 安全架构
 
@@ -148,12 +152,9 @@ Layer 5: 事后审计
 
 2. cc-command.ps1 路由:
    匹配 "/cc-run" → 调用:
-   powershell -File cc-run.ps1 -PromptText "修复..."
-
-3. cc-run.ps1 转发:
    powershell -File claude-code-relay.ps1 -PromptText "修复..." -AllowEdit
 
-4. claude-code-relay.ps1:
+3. claude-code-relay.ps1:
    a. Ensure-TargetConfig → 读 .openclaw/cc-target.json
    b. Resolve-RelayWorkspace → 校验 workspace
    c. 检查 current-task.json → 是否已有任务在跑
@@ -167,9 +168,9 @@ Layer 5: 事后审计
    k. claude-code-summary.ps1 → 摘要
    l. 写 current-task.json (completed/failed)
 
-5. cc-run.ps1 → 读取 Summary Log → 返回脱敏文本
+4. cc-command.ps1 → 读取 Summary Log → 返回脱敏文本
 
-6. OpenClaw → 飞书消息 (摘要文本)
+5. OpenClaw → 飞书消息 (摘要文本)
 ```
 
 ## 文件布局
@@ -185,8 +186,9 @@ F:\Unity6_AI\
 │   ├── cc-last.ps1                 最近摘要查询
 │   ├── cc-session.ps1              会话列表
 │   ├── cc-session-add.ps1          注册会话
-│   ├── cc-session-remove.ps1       移除会话
 │   ├── cc-use.ps1                  切换当前会话
+│   ├── cc-project.ps1              多项目管理
+│   ├── cc-health.ps1               管线健康检查
 │   ├── claude-code-summary.ps1     摘要生成器
 │   ├── feishu-progress-command.ps1 飞书进度上报
 │   ├── mobile-status.ps1           移动端状态报告
