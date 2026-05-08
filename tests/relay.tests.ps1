@@ -3,36 +3,25 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$RepoRoot = Split-Path -Parent $PSScriptRoot
-
-# Dot-source shared utilities (pure functions, no side effects)
-. "$RepoRoot\tools\lib\secret-utils.ps1"
-
-function Assert-True {
-    param([bool]$Condition, [string]$Message = "Expected condition to be true.")
-    if (-not $Condition) { throw $Message }
-}
-
-function Assert-False {
-    param([bool]$Condition, [string]$Message = "Expected condition to be false.")
-    if ($Condition) { throw $Message }
-}
-
-function Assert-Equal {
-    param($Actual, $Expected)
-    if ($Actual -ne $Expected) {
-        throw "Expected <$Expected> but got <$Actual>."
-    }
-}
-
-function Assert-NotEqual {
-    param($Actual, $Expected)
-    if ($Actual -eq $Expected) {
-        throw "Expected value not to be <$Expected>."
-    }
-}
 
 Describe "Redact-Secrets" {
+    BeforeAll {
+        $RepoRoot = Split-Path -Parent $PSScriptRoot
+        . "$RepoRoot\tools\lib\secret-utils.ps1"
+
+        function Assert-True {
+            param([bool]$Condition, [string]$Message = "Expected condition to be true.")
+            if (-not $Condition) { throw $Message }
+        }
+
+        function Assert-Equal {
+            param($Actual, $Expected)
+            if ($Actual -ne $Expected) {
+                throw "Expected <$Expected> but got <$Actual>."
+            }
+        }
+    }
+
     It "redacts Anthropic key (sk-ant-*)" {
         $result = Redact-Secrets "sk-ant-abc123def456ghi789"
         Assert-True ($result -notmatch "sk-ant-")
@@ -93,68 +82,93 @@ Describe "Redact-Secrets" {
 }
 
 Describe "Test-PathInsideRoot (workspace containment)" {
-    # Define the function directly for test isolation
-    function Get-FullPathSafe {
-        param([string]$Path)
-        return [System.IO.Path]::GetFullPath($Path).TrimEnd('\')
-    }
+    BeforeAll {
+        $script:TestRoot = "C:\TestProject"
 
-    function Test-PathInsideRoot {
-        param([string]$Path, [string]$Root)
-        $full = Get-FullPathSafe -Path $Path
-        $rootFull = Get-FullPathSafe -Path $Root
-        return ($full -eq $rootFull -or $full.StartsWith($rootFull + "\", [System.StringComparison]::OrdinalIgnoreCase))
-    }
+        function Assert-True {
+            param([bool]$Condition, [string]$Message = "Expected condition to be true.")
+            if (-not $Condition) { throw $Message }
+        }
 
-    $testRoot = "C:\TestProject"
+        function Assert-False {
+            param([bool]$Condition, [string]$Message = "Expected condition to be false.")
+            if ($Condition) { throw $Message }
+        }
+
+        function Get-FullPathSafe {
+            param([string]$Path)
+            return [System.IO.Path]::GetFullPath($Path).TrimEnd('\')
+        }
+
+        function Test-PathInsideRoot {
+            param([string]$Path, [string]$Root)
+            $full = Get-FullPathSafe -Path $Path
+            $rootFull = Get-FullPathSafe -Path $Root
+            return ($full -eq $rootFull -or $full.StartsWith($rootFull + "\", [System.StringComparison]::OrdinalIgnoreCase))
+        }
+    }
 
     It "accepts the root directory itself" {
-        Assert-True (Test-PathInsideRoot -Path $testRoot -Root $testRoot)
+        Assert-True (Test-PathInsideRoot -Path $script:TestRoot -Root $script:TestRoot)
     }
 
     It "accepts a subdirectory" {
-        Assert-True (Test-PathInsideRoot -Path "C:\TestProject\Assets" -Root $testRoot)
+        Assert-True (Test-PathInsideRoot -Path "C:\TestProject\Assets" -Root $script:TestRoot)
     }
 
     It "accepts a deeply nested subdirectory" {
-        Assert-True (Test-PathInsideRoot -Path "C:\TestProject\Assets\Scripts\AI" -Root $testRoot)
+        Assert-True (Test-PathInsideRoot -Path "C:\TestProject\Assets\Scripts\AI" -Root $script:TestRoot)
     }
 
     It "rejects a sibling directory" {
-        Assert-False (Test-PathInsideRoot -Path "C:\OtherProject" -Root $testRoot)
+        Assert-False (Test-PathInsideRoot -Path "C:\OtherProject" -Root $script:TestRoot)
     }
 
     It "rejects parent directory escape" {
-        Assert-False (Test-PathInsideRoot -Path "C:\" -Root $testRoot)
+        Assert-False (Test-PathInsideRoot -Path "C:\" -Root $script:TestRoot)
     }
 
     It "handles trailing backslash on input" {
-        Assert-True (Test-PathInsideRoot -Path "C:\TestProject\Assets\" -Root $testRoot)
+        Assert-True (Test-PathInsideRoot -Path "C:\TestProject\Assets\" -Root $script:TestRoot)
     }
 
     It "rejects path with common prefix but not a child" {
-        Assert-False (Test-PathInsideRoot -Path "C:\TestProject2" -Root $testRoot)
+        Assert-False (Test-PathInsideRoot -Path "C:\TestProject2" -Root $script:TestRoot)
     }
 }
 
 Describe "Compare-GitStatusSnapshots" {
-    function Compare-GitStatusSnapshots {
-        param([hashtable]$Before, [hashtable]$After)
-        $added = New-Object System.Collections.Generic.List[string]
-        $modified = New-Object System.Collections.Generic.List[string]
-        $deleted = New-Object System.Collections.Generic.List[string]
-        foreach ($path in $After.Keys) {
-            $afterRecord = $After[$path]
-            if ($afterRecord.status.Contains("D")) {
-                if (-not $Before.ContainsKey($path) -or -not $Before[$path].status.Contains("D")) { $deleted.Add($path) }
-            } elseif (-not $Before.ContainsKey($path)) {
-                $added.Add($path)
-            } else {
-                $beforeRecord = $Before[$path]
-                if ($beforeRecord.hash -ne $afterRecord.hash -or $beforeRecord.status -ne $afterRecord.status) { $modified.Add($path) }
+    BeforeAll {
+        function Assert-True {
+            param([bool]$Condition, [string]$Message = "Expected condition to be true.")
+            if (-not $Condition) { throw $Message }
+        }
+
+        function Assert-Equal {
+            param($Actual, $Expected)
+            if ($Actual -ne $Expected) {
+                throw "Expected <$Expected> but got <$Actual>."
             }
         }
-        return [ordered]@{ added = @($added); modified = @($modified); deleted = @($deleted) }
+
+        function Compare-GitStatusSnapshots {
+            param([hashtable]$Before, [hashtable]$After)
+            $added = New-Object System.Collections.Generic.List[string]
+            $modified = New-Object System.Collections.Generic.List[string]
+            $deleted = New-Object System.Collections.Generic.List[string]
+            foreach ($path in $After.Keys) {
+                $afterRecord = $After[$path]
+                if ($afterRecord.status.Contains("D")) {
+                    if (-not $Before.ContainsKey($path) -or -not $Before[$path].status.Contains("D")) { $deleted.Add($path) }
+                } elseif (-not $Before.ContainsKey($path)) {
+                    $added.Add($path)
+                } else {
+                    $beforeRecord = $Before[$path]
+                    if ($beforeRecord.hash -ne $afterRecord.hash -or $beforeRecord.status -ne $afterRecord.status) { $modified.Add($path) }
+                }
+            }
+            return [ordered]@{ added = @($added); modified = @($modified); deleted = @($deleted) }
+        }
     }
 
     It "detects newly added files" {
@@ -225,13 +239,33 @@ Describe "Compare-GitStatusSnapshots" {
 }
 
 Describe "Relay parameter validation (integration)" {
-    $RelayScript = Join-Path $RepoRoot "tools\claude-code-relay.ps1"
-    $ConfigExists = Test-Path (Join-Path $RepoRoot "config.json")
+    BeforeAll {
+        $RepoRoot = Split-Path -Parent $PSScriptRoot
+        $script:RelayScript = Join-Path $RepoRoot "tools\claude-code-relay.ps1"
+        $script:ConfigExists = Test-Path (Join-Path $RepoRoot "config.json")
+
+        function Assert-True {
+            param([bool]$Condition, [string]$Message = "Expected condition to be true.")
+            if (-not $Condition) { throw $Message }
+        }
+
+        function Assert-False {
+            param([bool]$Condition, [string]$Message = "Expected condition to be false.")
+            if ($Condition) { throw $Message }
+        }
+
+        function Assert-NotEqual {
+            param($Actual, $Expected)
+            if ($Actual -eq $Expected) {
+                throw "Expected value not to be <$Expected>."
+            }
+        }
+    }
 
     It "script is parsable without syntax errors" {
         if ($SkipIntegration) { return }
         try {
-            $null = & powershell -NoProfile -ExecutionPolicy Bypass -File $RelayScript -PromptText "test" 2>&1
+            $null = & powershell -NoProfile -ExecutionPolicy Bypass -File $script:RelayScript -PromptText "test" 2>&1
         } catch {
             # Only fail if the error is a parse/syntax error, not a config-not-found runtime error
             Assert-False ($_.Exception.Message -match "ParserError|parse error|syntax")
@@ -242,34 +276,54 @@ Describe "Relay parameter validation (integration)" {
 
     It "rejects AllowEdit + Readonly together" {
         if ($SkipIntegration) { return }
-        if (-not $ConfigExists) { return }
-        $errOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $RelayScript -PromptText "test" -AllowEdit -Readonly 2>&1
+        if (-not $script:ConfigExists) { return }
+        $errOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $script:RelayScript -PromptText "test" -AllowEdit -Readonly 2>&1
         Assert-NotEqual $LASTEXITCODE 0
     }
 
     It "rejects AllowEdit + RawPassThrough together" {
         if ($SkipIntegration) { return }
-        if (-not $ConfigExists) { return }
-        $errOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $RelayScript -PromptText "test" -AllowEdit -RawPassThrough 2>&1
+        if (-not $script:ConfigExists) { return }
+        $errOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $script:RelayScript -PromptText "test" -AllowEdit -RawPassThrough 2>&1
         Assert-NotEqual $LASTEXITCODE 0
     }
 
     It "rejects negative MaxMinutes" {
         if ($SkipIntegration) { return }
-        if (-not $ConfigExists) { return }
-        $errOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $RelayScript -PromptText "test" -MaxMinutes -1 2>&1
+        if (-not $script:ConfigExists) { return }
+        $errOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $script:RelayScript -PromptText "test" -MaxMinutes -1 2>&1
         Assert-NotEqual $LASTEXITCODE 0
     }
 }
 
 Describe "cc-command routing (integration)" {
-    $CommandScript = Join-Path $RepoRoot "tools\cc-command.ps1"
-    $ConfigExists = Test-Path (Join-Path $RepoRoot "config.json")
+    BeforeAll {
+        $RepoRoot = Split-Path -Parent $PSScriptRoot
+        $script:CommandScript = Join-Path $RepoRoot "tools\cc-command.ps1"
+        $script:ConfigExists = Test-Path (Join-Path $RepoRoot "config.json")
+
+        function Assert-True {
+            param([bool]$Condition, [string]$Message = "Expected condition to be true.")
+            if (-not $Condition) { throw $Message }
+        }
+
+        function Assert-False {
+            param([bool]$Condition, [string]$Message = "Expected condition to be false.")
+            if ($Condition) { throw $Message }
+        }
+
+        function Assert-Equal {
+            param($Actual, $Expected)
+            if ($Actual -ne $Expected) {
+                throw "Expected <$Expected> but got <$Actual>."
+            }
+        }
+    }
 
     It "script is parsable without syntax errors" {
         if ($SkipIntegration) { return }
         try {
-            $null = & powershell -NoProfile -ExecutionPolicy Bypass -File $CommandScript -MessageText "/cc-help" 2>&1
+            $null = & powershell -NoProfile -ExecutionPolicy Bypass -File $script:CommandScript -MessageText "/cc-help" 2>&1
         } catch {
             Assert-False ($_.Exception.Message -match "ParserError|parse error|syntax")
         }
@@ -278,16 +332,16 @@ Describe "cc-command routing (integration)" {
 
     It "routes /cc-help and exits 0" {
         if ($SkipIntegration) { return }
-        if (-not $ConfigExists) { return }
-        $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $CommandScript -MessageText "/cc-help" 2>&1
+        if (-not $script:ConfigExists) { return }
+        $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $script:CommandScript -MessageText "/cc-help" 2>&1
         Assert-Equal $LASTEXITCODE 0
         Assert-True (($output | Out-String) -match "Feishu-CC")
     }
 
     It "shows help for empty message" {
         if ($SkipIntegration) { return }
-        if (-not $ConfigExists) { return }
-        $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $CommandScript -MessageText " " 2>&1
+        if (-not $script:ConfigExists) { return }
+        $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $script:CommandScript -MessageText " " 2>&1
         Assert-Equal $LASTEXITCODE 0
     }
 }
