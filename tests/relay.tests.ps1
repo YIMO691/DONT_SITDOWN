@@ -8,63 +8,87 @@ $RepoRoot = Split-Path -Parent $PSScriptRoot
 # Dot-source shared utilities (pure functions, no side effects)
 . "$RepoRoot\tools\lib\secret-utils.ps1"
 
+function Assert-True {
+    param([bool]$Condition, [string]$Message = "Expected condition to be true.")
+    if (-not $Condition) { throw $Message }
+}
+
+function Assert-False {
+    param([bool]$Condition, [string]$Message = "Expected condition to be false.")
+    if ($Condition) { throw $Message }
+}
+
+function Assert-Equal {
+    param($Actual, $Expected)
+    if ($Actual -ne $Expected) {
+        throw "Expected <$Expected> but got <$Actual>."
+    }
+}
+
+function Assert-NotEqual {
+    param($Actual, $Expected)
+    if ($Actual -eq $Expected) {
+        throw "Expected value not to be <$Expected>."
+    }
+}
+
 Describe "Redact-Secrets" {
     It "redacts Anthropic key (sk-ant-*)" {
         $result = Redact-Secrets "sk-ant-abc123def456ghi789"
-        $result -notmatch "sk-ant-" | Should Be $true
-        $result -match "REDACTED_SECRET" | Should Be $true
+        Assert-True ($result -notmatch "sk-ant-")
+        Assert-True ($result -match "REDACTED_SECRET")
     }
 
     It "redacts OpenAI key (sk-*)" {
         $result = Redact-Secrets "api key: sk-proj-1234567890abcdef"
-        $result -notmatch "sk-proj-" | Should Be $true
-        $result -match "REDACTED_SECRET" | Should Be $true
+        Assert-True ($result -notmatch "sk-proj-")
+        Assert-True ($result -match "REDACTED_SECRET")
     }
 
     It "redacts DEEPSEEK_API_KEY env var" {
         $result = Redact-Secrets 'DEEPSEEK_API_KEY=sk-abc123'
-        $result -match "REDACTED_SECRET" | Should Be $true
+        Assert-True ($result -match "REDACTED_SECRET")
     }
 
     It "redacts FEISHU_APP_SECRET env var" {
         $result = Redact-Secrets 'FEISHU_APP_SECRET=mysecret123'
-        $result -match "REDACTED_SECRET" | Should Be $true
+        Assert-True ($result -match "REDACTED_SECRET")
     }
 
     It "redacts appSecret JSON field" {
         $result = Redact-Secrets 'appSecret": "abcdef123456"'
-        $result -match "REDACTED_SECRET" | Should Be $true
+        Assert-True ($result -match "REDACTED_SECRET")
     }
 
     It "redacts App Secret plain text" {
         $result = Redact-Secrets "App Secret: xyz789"
-        $result -match "REDACTED_SECRET" | Should Be $true
+        Assert-True ($result -match "REDACTED_SECRET")
     }
 
     It "redacts ANTHROPIC_AUTH_TOKEN" {
         $result = Redact-Secrets "ANTHROPIC_AUTH_TOKEN = mytoken123"
-        $result -match "REDACTED_SECRET" | Should Be $true
+        Assert-True ($result -match "REDACTED_SECRET")
     }
 
     It "redacts OPENAI_API_KEY" {
         $result = Redact-Secrets "OPENAI_API_KEY=sk-openai-key"
-        $result -match "REDACTED_SECRET" | Should Be $true
+        Assert-True ($result -match "REDACTED_SECRET")
     }
 
     It "leaves normal text unchanged" {
         $text = "Fix null reference in EnemyFSM.cs line 45"
         $result = Redact-Secrets $text
-        $result | Should Be $text
+        Assert-Equal $result $text
     }
 
     It "handles null input gracefully" {
         $result = Redact-Secrets $null
-        $result | Should Be ""
+        Assert-Equal $result ""
     }
 
     It "handles empty string input" {
         $result = Redact-Secrets ""
-        $result | Should Be ""
+        Assert-Equal $result ""
     }
 }
 
@@ -85,31 +109,31 @@ Describe "Test-PathInsideRoot (workspace containment)" {
     $testRoot = "C:\TestProject"
 
     It "accepts the root directory itself" {
-        Test-PathInsideRoot -Path $testRoot -Root $testRoot | Should Be $true
+        Assert-True (Test-PathInsideRoot -Path $testRoot -Root $testRoot)
     }
 
     It "accepts a subdirectory" {
-        Test-PathInsideRoot -Path "C:\TestProject\Assets" -Root $testRoot | Should Be $true
+        Assert-True (Test-PathInsideRoot -Path "C:\TestProject\Assets" -Root $testRoot)
     }
 
     It "accepts a deeply nested subdirectory" {
-        Test-PathInsideRoot -Path "C:\TestProject\Assets\Scripts\AI" -Root $testRoot | Should Be $true
+        Assert-True (Test-PathInsideRoot -Path "C:\TestProject\Assets\Scripts\AI" -Root $testRoot)
     }
 
     It "rejects a sibling directory" {
-        Test-PathInsideRoot -Path "C:\OtherProject" -Root $testRoot | Should Be $false
+        Assert-False (Test-PathInsideRoot -Path "C:\OtherProject" -Root $testRoot)
     }
 
     It "rejects parent directory escape" {
-        Test-PathInsideRoot -Path "C:\" -Root $testRoot | Should Be $false
+        Assert-False (Test-PathInsideRoot -Path "C:\" -Root $testRoot)
     }
 
     It "handles trailing backslash on input" {
-        Test-PathInsideRoot -Path "C:\TestProject\Assets\" -Root $testRoot | Should Be $true
+        Assert-True (Test-PathInsideRoot -Path "C:\TestProject\Assets\" -Root $testRoot)
     }
 
     It "rejects path with common prefix but not a child" {
-        Test-PathInsideRoot -Path "C:\TestProject2" -Root $testRoot | Should Be $false
+        Assert-False (Test-PathInsideRoot -Path "C:\TestProject2" -Root $testRoot)
     }
 }
 
@@ -139,9 +163,9 @@ Describe "Compare-GitStatusSnapshots" {
             "NewFile.cs" = [pscustomobject]@{ path = "NewFile.cs"; status = "??"; hash = "AAA" }
         }
         $result = Compare-GitStatusSnapshots -Before $before -After $after
-        $result.added -contains "NewFile.cs" | Should Be $true
-        $result.modified.Count | Should Be 0
-        $result.deleted.Count | Should Be 0
+        Assert-True ($result.added -contains "NewFile.cs")
+        Assert-Equal $result.modified.Count 0
+        Assert-Equal $result.deleted.Count 0
     }
 
     It "detects modified files (hash changed)" {
@@ -152,9 +176,9 @@ Describe "Compare-GitStatusSnapshots" {
             "File.cs" = [pscustomobject]@{ path = "File.cs"; status = "M "; hash = "BBB" }
         }
         $result = Compare-GitStatusSnapshots -Before $before -After $after
-        $result.modified -contains "File.cs" | Should Be $true
-        $result.added.Count | Should Be 0
-        $result.deleted.Count | Should Be 0
+        Assert-True ($result.modified -contains "File.cs")
+        Assert-Equal $result.added.Count 0
+        Assert-Equal $result.deleted.Count 0
     }
 
     It "detects modified files (status changed)" {
@@ -165,7 +189,7 @@ Describe "Compare-GitStatusSnapshots" {
             "File.cs" = [pscustomobject]@{ path = "File.cs"; status = "M "; hash = "AAA" }
         }
         $result = Compare-GitStatusSnapshots -Before $before -After $after
-        $result.modified -contains "File.cs" | Should Be $true
+        Assert-True ($result.modified -contains "File.cs")
     }
 
     It "detects deleted files" {
@@ -176,7 +200,7 @@ Describe "Compare-GitStatusSnapshots" {
             "OldFile.cs" = [pscustomobject]@{ path = "OldFile.cs"; status = " D"; hash = "" }
         }
         $result = Compare-GitStatusSnapshots -Before $before -After $after
-        $result.deleted -contains "OldFile.cs" | Should Be $true
+        Assert-True ($result.deleted -contains "OldFile.cs")
     }
 
     It "does not flag unchanged files" {
@@ -187,16 +211,16 @@ Describe "Compare-GitStatusSnapshots" {
             "File.cs" = [pscustomobject]@{ path = "File.cs"; status = "M "; hash = "AAA" }
         }
         $result = Compare-GitStatusSnapshots -Before $before -After $after
-        $result.added.Count | Should Be 0
-        $result.modified.Count | Should Be 0
-        $result.deleted.Count | Should Be 0
+        Assert-Equal $result.added.Count 0
+        Assert-Equal $result.modified.Count 0
+        Assert-Equal $result.deleted.Count 0
     }
 
     It "handles empty before and after" {
         $result = Compare-GitStatusSnapshots -Before @{} -After @{}
-        $result.added.Count | Should Be 0
-        $result.modified.Count | Should Be 0
-        $result.deleted.Count | Should Be 0
+        Assert-Equal $result.added.Count 0
+        Assert-Equal $result.modified.Count 0
+        Assert-Equal $result.deleted.Count 0
     }
 }
 
@@ -210,31 +234,31 @@ Describe "Relay parameter validation (integration)" {
             $null = & powershell -NoProfile -ExecutionPolicy Bypass -File $RelayScript -PromptText "test" 2>&1
         } catch {
             # Only fail if the error is a parse/syntax error, not a config-not-found runtime error
-            ($_.Exception.Message -match "ParserError|parse error|syntax") | Should Be $false
+            Assert-False ($_.Exception.Message -match "ParserError|parse error|syntax")
         }
         # Script executed (even if it failed at runtime due to missing config.json)
-        $true | Should Be $true
+        Assert-True $true
     }
 
     It "rejects AllowEdit + Readonly together" {
         if ($SkipIntegration) { return }
         if (-not $ConfigExists) { return }
         $errOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $RelayScript -PromptText "test" -AllowEdit -Readonly 2>&1
-        $LASTEXITCODE | Should Not Be 0
+        Assert-NotEqual $LASTEXITCODE 0
     }
 
     It "rejects AllowEdit + RawPassThrough together" {
         if ($SkipIntegration) { return }
         if (-not $ConfigExists) { return }
         $errOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $RelayScript -PromptText "test" -AllowEdit -RawPassThrough 2>&1
-        $LASTEXITCODE | Should Not Be 0
+        Assert-NotEqual $LASTEXITCODE 0
     }
 
     It "rejects negative MaxMinutes" {
         if ($SkipIntegration) { return }
         if (-not $ConfigExists) { return }
         $errOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $RelayScript -PromptText "test" -MaxMinutes -1 2>&1
-        $LASTEXITCODE | Should Not Be 0
+        Assert-NotEqual $LASTEXITCODE 0
     }
 }
 
@@ -247,23 +271,23 @@ Describe "cc-command routing (integration)" {
         try {
             $null = & powershell -NoProfile -ExecutionPolicy Bypass -File $CommandScript -MessageText "/cc-help" 2>&1
         } catch {
-            ($_.Exception.Message -match "ParserError|parse error|syntax") | Should Be $false
+            Assert-False ($_.Exception.Message -match "ParserError|parse error|syntax")
         }
-        $true | Should Be $true
+        Assert-True $true
     }
 
     It "routes /cc-help and exits 0" {
         if ($SkipIntegration) { return }
         if (-not $ConfigExists) { return }
         $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $CommandScript -MessageText "/cc-help" 2>&1
-        $LASTEXITCODE | Should Be 0
-        ($output | Out-String) -match "Feishu-CC" | Should Be $true
+        Assert-Equal $LASTEXITCODE 0
+        Assert-True (($output | Out-String) -match "Feishu-CC")
     }
 
     It "shows help for empty message" {
         if ($SkipIntegration) { return }
         if (-not $ConfigExists) { return }
         $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $CommandScript -MessageText " " 2>&1
-        $LASTEXITCODE | Should Be 0
+        Assert-Equal $LASTEXITCODE 0
     }
 }
