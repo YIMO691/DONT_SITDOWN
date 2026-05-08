@@ -173,46 +173,129 @@ powershell -File tools/cc-command.ps1 -MessageText "/cc-status"
 
 ### 配置 OpenClaw
 
-**Step 1：安装飞书插件**
+> 参考 OpenClaw 官方流程：先完成 OpenClaw onboarding / Gateway 基础配置，再把 Feishu/Lark 账号或应用接入 OpenClaw，最后配置 agent 路由。OpenClaw CLI 和 Feishu 接入方式可能随版本变化，实际绑定时请优先查看最新官方文档；本文步骤只作为当前版本参考。Feishu 在新版 OpenClaw 中是 bundled plugin，通常不需要单独安装。
+
+**Step 1：初始化 OpenClaw**
 
 ```powershell
-openclaw plugins install @openclaw/feishu --force
+# 官方推荐：交互式完成模型、鉴权、Gateway 等基础配置
+openclaw onboard --install-daemon
+
+# 验证 Gateway 基础状态
+openclaw gateway status
+```
+
+如果当前环境已完成 onboarding，可跳过本步。
+
+**Step 2：把 Feishu/Lark 账号或应用绑定到 OpenClaw**
+
+官方优先路径是账号登录/扫码绑定。OpenClaw 会引导你登录 Feishu/Lark，并创建或连接 bot：
+
+```powershell
+# 推荐：按提示扫码/登录并完成 bot 接入
+openclaw channels login --channel feishu
+
+# 验证 channel 是否写入配置
+openclaw channels list
+```
+
+如果你已有企业自建应用，也可以走手动 App ID / App Secret 路径：
+
+```powershell
+# 进入通道配置向导，选择 Feishu，并输入 App ID / App Secret
+openclaw channels add
+
+# 某些版本需要显式启用
+openclaw config set channels.feishu.enabled true
+```
+
+手动路径需要先在飞书开放平台完成：
+
+1. 创建企业自建应用
+2. 开启 Bot 能力
+3. 添加消息权限，例如 `im:message.p2p_msg:readonly`、`im:message:send_as_bot`、`im:message`
+4. 保存 `App ID` 和 `App Secret`
+
+**Step 3：启动 Gateway，并确认 Feishu channel 已连接**
+
+```powershell
+# 如果已安装 gateway service
+openclaw gateway restart
+
+# 如果没有安装 service，就前台启动
+openclaw gateway run
+
+# 检查连接状态
+openclaw gateway status
+openclaw logs --follow
+```
+
+如果你使用的是较旧 OpenClaw 或自定义安装，Feishu 不在 bundled plugin 中，再手动安装：
+
+```powershell
+openclaw plugins install @openclaw/feishu
 openclaw config set plugins.allow --json "[""deepseek"",""memory-core"",""feishu""]"
 openclaw plugins enable feishu
 ```
 
-**Step 2：配置飞书频道**
+**Step 4：手动 App 路径才需要回到飞书后台配置事件订阅**
+
+如果 Step 2 使用的是 `channels login --channel feishu` 官方自动绑定路径，通常可以跳过本步。
+
+如果 Step 2 使用的是手动 App ID / App Secret 路径，飞书长连接事件订阅要求 OpenClaw 侧已经配置 Feishu channel，且 Gateway 正在运行。然后回到飞书开放平台：
+
+1. 事件订阅选择长连接 WebSocket
+2. 添加事件 `im.message.receive_v1`
+3. 发布应用并等待企业管理员审批
+
+**Step 5：完成飞书 DM 配对/放行**
+
+OpenClaw 的 DM pairing 会阻止未知用户直接控制 agent。首次从飞书私聊机器人时，如果收到配对码，在电脑上执行：
 
 ```powershell
-openclaw channels add feishu
-# 输入 App ID 和 App Secret
-openclaw config set channels.feishu.enabled true
+openclaw pairing list feishu
+openclaw pairing approve feishu <CODE>
 ```
 
-**Step 3：创建 Agent 并绑定**
+也可以在 `~\.openclaw\openclaw.json` 中为 Feishu 配置 `dmPolicy` / `allowFrom`，只允许自己的飞书 `open_id`。
+
+**Step 6：创建 Agent 并绑定 Feishu 路由**
+
+OpenClaw 通过 `agents.list` 和 `bindings` 决定某个 Feishu 消息交给哪个 agent。为当前项目创建 agent：
 
 ```powershell
 openclaw agents add myproject --workspace "F:\MyProject" --model deepseek/deepseek-v4-flash
 openclaw agents bind --agent myproject --bind feishu:default
 ```
 
-**Step 4：配置 SOUL.md 直通（跳过 AI 分析 `/cc` 消息）**
+绑定后，Feishu `default` 账号收到的消息会路由到 `myproject` agent。
+
+**Step 7：配置 SOUL.md 直通（跳过 AI 分析 `/cc` 消息）**
 
 将 `SOUL.example.md` 复制到 agent 目录并改名为 `SOUL.md`：
 
 ```powershell
 copy .claude\rules\SOUL.example.md $env:USERPROFILE\.openclaw\agents\myproject\agent\SOUL.md
-# 编辑 SOUL.md，把 <YOUR_PROJECT> 替换为你的项目路径
+notepad $env:USERPROFILE\.openclaw\agents\myproject\agent\SOUL.md
 ```
 
-**Step 5：启动**
+把里面的项目脚本路径改成你的实际路径，例如：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File F:\MyProject\tools\cc-command.ps1 -MessageText "<MESSAGE>"
+```
+
+**Step 8：最终启动/重启 Gateway 并验证**
 
 ```powershell
 $env:DEEPSEEK_API_KEY="sk-你的key"
-openclaw gateway
+openclaw gateway restart
+
+# 如果没有注册后台服务，也可以前台启动：
+openclaw gateway run
 ```
 
-看到 `[feishu] connected` + `[heartbeat] started` 即成功。
+看到 `[feishu] ... WebSocket client started`、`ws client ready` 或 `[heartbeat] started` 即成功。
 
 ### 飞书测试
 
